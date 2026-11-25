@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>技术原理拆解 · Telegram 社群骗局</title>
+<link rel="stylesheet" href="css/tech.css">
+</head>
+<body>
+<div class="tech-bar">
+  <span class="tech-brand"><span class="boat"><svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 17.5 16 5l13 12.5-4.5 9.5h-17z"/><path d="M16 5v17M3 17.5h26"/></svg></span><span class="tb-text">纸舟课堂 · 技术拆解</span></span>
+  <span class="spacer"></span>
+  <a class="btn" href="index.html">返回仿真</a>
+  <a class="btn" href="index.html#split">左右对照</a>
+  <a class="btn" href="backend.html">后台与监控</a>
+  <a class="btn" href="walk.html">逐页讲解</a>
+  <a class="btn" href="课堂使用说明.md" target="_blank" rel="noopener">课案</a>
+  <button class="btn primary" onclick="window.print()">打印 / 存 PDF</button>
+</div>
+
+<div class="tech-wrap">
+  <div class="tech-kicker">Telegram scam · technical anatomy</div>
+  <h1>Telegram 只传消息，<br>钱在授权和链上</h1>
+  <div class="tech-note" style="margin-bottom:14px"><b>代码段：</b>本文的函数名/字段名是术语；所有可运行或伪代码片段集中在 <a href="backend.html">backend.html</a>，包括 webhook、数据表、Approval/Transfer 解码、索引器、规则引擎、worker、撤销与前端 approve 伪代码。</div>
+  <p class="tech-lead">这份拆解把仿真里的每个页面分成三层：<b>Telegram 原语</b>、<b>第三方网页</b>、<b>钱包与链上交易</b>。看完你应该能回答：为什么点「收款」没有 txid、为什么「提现」会变成 approve、为什么授权当时不扣钱、对方怎么知道你的地址进钱了、商城线为什么要先收 1.30 USDT。</p>
+  <div class="tech-meta">
+    <span class="tech-chip">依据 2026-08 频道公开材料</span>
+    <span class="tech-chip">对应本地仿真</span>
+    <span class="tech-chip">防御视角</span>
+    <span class="tech-chip">不含可部署的攻击代码</span>
+  </div>
+
+  <nav class="tech-toc">
+    <h2>目录</h2>
+    <ol>
+      <li><a href="#arch">一张图：四段链路</a></li>
+      <li><a href="#tg">Telegram 侧的原语</a></li>
+      <li><a href="#okpay">Okpay 线：每个页面干什么</a></li>
+      <li><a href="#theft">为什么授权后会被盗</a></li>
+      <li><a href="#monitor">对方怎么监控与归集</a></li>
+      <li><a href="#mall">商城线：订单、收银台、验资</a></li>
+      <li><a href="#sim">这套仿真怎么实现</a></li>
+      <li><a href="#repro">怎么安全复现</a></li>
+      <li><a href="#evidence">证据与边界</a></li>
+    </ol>
+  </nav>
+
+  <!-- 1 -->
+  <section class="tech-sec" id="arch">
+    <div class="tech-h2"><span class="n">01</span><h2>一张图：四段链路</h2></div>
+    <p class="tech-p">骗局不是一个网站，而是四段拼起来：<b>Telegram 里的消息与按钮 → 骗子服务器 → 外部网页 → 钱包与链上交易</b>。前两段负责让你相信，第三段负责让你签名，第四段负责把钱转走。</p>
+    <div class="tech-arch">
+      <div class="arch-label">① 触达：看起来像官方群 / 官方机器人</div>
+      <div class="arch-row">
+        <div class="arch-node dark"><b>受害者</b><span>Telegram 客户端</span></div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-node blue"><b>Telegram Bot API</b><span>消息 / inline_keyboard<br>callback_query</span></div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-node dark"><b>骗子服务器</b><span>bot token / 数据库<br>会话 / 订单 / 话术</span></div>
+      </div>
+      <div class="arch-label">② 引导：把「提现 / 支付」换成外部链接</div>
+      <div class="arch-row">
+        <div class="arch-node red"><b>仿 Okpay / 收银台</b><span>余额、订单、二维码<br>绑定钱包页</span></div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-node blue"><b>钱包 / WebView</b><span>WalletConnect、深链<br>或内置浏览器</span></div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-node dark"><b>签名</b><span>approve(spender, 额度)</span></div>
+      </div>
+      <div class="arch-label">③ 收割：链上监听 + 自动归集</div>
+      <div class="arch-row">
+        <div class="arch-node blue"><b>TRON / TRC20</b><span>Approval、Transfer<br>事件日志</span></div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-node dark"><b>监听 / 索引</b><span>节点、TronGrid、<br>第三方 indexer</span></div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-node red"><b>归集器</b><span>transferFrom<br>自动扫余额</span></div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-node dark"><b>操作者</b><span>鱼苗通知 / 后台</span></div>
+      </div>
+    </div>
+    <div class="tech-note"><b>关键分界：</b>Telegram 与网页都不碰私钥。能让钱动的只有一件事——受害者在钱包里对一笔交易点了「确认」。所以骗局的全部目标，是把「提现」「验资」包装成一次看起来无害的签名。</div>
+  </section>
+
+  <!-- 2 -->
+  <section class="tech-sec" id="tg">
+    <div class="tech-h2"><span class="n">02</span><h2>Telegram 侧的原语</h2></div>
+    <p class="tech-p">Telegram 提供的不是「支付」，而是<b>消息、按钮回调和网页入口</b>。骗子把它们组合成「客服感」和「官方感」。</p>
+    <table class="tech-table">
+      <thead><tr><th>原语</th><th>真实机制</th><th>本案用法</th><th>可核对点</th></tr></thead>
+      <tbody>
+        <tr><td><b>Bot</b></td><td>@BotFather 创建，拿到 token；bot 是 <code>is_bot=true</code> 的账号，可以发消息、编辑、删除、置顶，但不能创建群、不能冒充成员。</td><td>「云上商铺」「Okpay」「鱼苗通知」都是 bot。</td><td>点名字看资料；bot 有 BOT 标记，没有官方认证勾。</td></tr>
+        <tr><td><b>群 / 频道</b></td><td>群有成员、管理员、入群服务消息；频道有订阅者、浏览量，一般只能管理员发言。</td><td>群负责晒单和「官方客服」，频道负责放长文、截图和「战绩」。</td><td>群可公开加入；频道可转发；两者都能被举报。</td></tr>
+        <tr><td><b>inline_keyboard</b></td><td>消息附带按钮数组；每个按钮是 <code>callback_data</code>、<code>url</code> 或 <code>web_app</code>。</td><td>「收款」「提币」「立即支付」「联系客服」。</td><td>按钮文字不等于动作；点下去看跳到哪里。</td></tr>
+        <tr><td><b>callback_query</b></td><td>用户点按钮 → Telegram 把 <code>callback_query</code>（含 data、from、message_id）推给 bot 服务器；bot 必须 <code>answerCallbackQuery</code>。</td><td>点「收款」后，bot 知道是谁、点了哪张卡、哪条消息。</td><td>这一步没有链上交易，只是 bot 收到一个事件。</td></tr>
+        <tr><td><b>editMessageText</b></td><td>bot 可以改自己发过的消息，重新渲染文字和按钮。</td><td>同一张卡从「待支付」变「已支付」；从「转账」变「领取成功」。</td><td>「消息变了」不等于「钱到了」。</td></tr>
+        <tr><td><b>web_app 按钮</b></td><td>在私聊里打开 Telegram Web App；只对私聊有效，群聊不可用。</td><td>本案更多用 <code>url</code> 按钮打开外部站点，而不是 WebApp。</td><td>WebApp 也要看域名和 <code>initData</code> 校验。</td></tr>
+        <tr><td><b>url 按钮</b></td><td>打开内置浏览器；首次会弹「打开链接 / 您确定要打开此链接？」。</td><td>「立即支付」「点击前往绑定」「开始验资」。</td><td>这个确认框本身就是「你要离开 Telegram」的提示。</td></tr>
+        <tr><td><b>inline mode / via</b></td><td>用户在任意聊天输入 <code>@bot 关键词</code>，bot 返回结果，以「via @bot」署名发在当前聊天。</td><td>群里的订单卡以 <code>via @yunshang_bot</code> 出现，看起来像官方发的。</td><td>via 是「谁生成」，不是「谁担保」；群管理员可以是另一个账号。</td></tr>
+        <tr><td><b>转发 / 置顶</b></td><td>转发保留来源；管理员可置顶。</td><td>置顶「新人必读」；从频道转发「鱼领取后提现发起授权」。</td><td>置顶可以删改；转发头也是内容的一部分。</td></tr>
+        <tr><td><b>社会证明</b></td><td>头像、昵称、简介、共同群组、入群消息、反应、浏览量、晒单图。</td><td>「刚提 10000U 秒到」「已到账」截图、管理员红字、群成员起哄。</td><td>截图可伪造；余额可 P；看链上 txid，不看截图。</td></tr>
+        <tr><td><b>私聊客服</b></td><td>bot 不能主动私聊未启动它的用户；普通账号可以。</td><td>群里说「客服不会主动私聊你」，随后一个「小美」来私聊。</td><td>私聊账号是不是群管理员？用户名是否一致？</td></tr>
+      </tbody>
+    </table>
+    <div class="tech-warn"><b>真实 Telegram 的能力边界：</b>bot 不能创建群，不能冒充群成员，不能伪造「官方认证」勾，也不能在没有用户先发起的情况下私聊。因此真实案件里，假群、托、晒单需要真人账号参与；本仿真把这些「社会证明」做成可回放的本地素材，而不是去注册假账号。</div>
+    <h3 class="tech-h3">真实案件里通常怎么搭</h3>
+    <div class="tech-grid">
+      <div class="tech-card"><span class="tag">1 · 账号与群</span><h3>先把「场子」搭起来</h3><p>买/养账号，建群和频道，设置名称、头像、简介、置顶规则；拉几个托发晒单、抢红包、说「已到账」。这一步用的是真人账号，不是 bot。</p></div>
+      <div class="tech-card"><span class="tag">2 · 机器人</span><h3>BotFather 建 bot</h3><p>拿 token，部署后端（webhook 或长轮询），写菜单、商品、订单、回调；用 editMessageText 更新订单状态，用 callback_data 区分按钮。</p></div>
+      <div class="tech-card"><span class="tag">3 · 仿站</span><h3>域名 + 前端 + 钱包 SDK</h3><p>注册域名、配 HTTPS、仿 UI；后端存余额/订单；前端接钱包连接和 approve 请求。页面要看起来像官方，但域名不是。</p></div>
+      <div class="tech-card"><span class="tag">4 · 话术</span><h3>把授权包装成提现</h3><p>红包/订单引流 → 提现/验资 → 绑定钱包 → 授权。客服私聊、限时、原路退回、通道维护，都是为了让签名发生。</p></div>
+      <div class="tech-card"><span class="tag">5 · 监控</span><h3>indexer + 队列 + bot</h3><p>订阅 Approval/Transfer，余额到阈值就归集；用 Telegram bot 通知操作者。也可以人工看余额再转。</p></div>
+      <div class="tech-card"><span class="tag">6 · 反侦察</span><h3>轮换与拖延</h3><p>换域名、换账号、删消息、限制评论；受害人发现后用「风控/补钱」拖延。这些是运营手段，不是技术魔法。</p></div>
+    </div>
+    <div class="tech-note"><b>实现栈（真实案件常见组合）：</b>bot 后端 Python/Node + PostgreSQL/Redis；webhook 或长轮询；仿站 React/Vue/静态页 + TronLink/WalletConnect；支付用聚合支付、个人收款码或链上地址；监控用 TronGrid/TronScan API + 队列 + worker；通知用另一个 Telegram bot。具体技术选型因团伙而异，本案材料没有公开后台代码。</div>
+  </section>
+
+  <!-- 3 -->
+  <section class="tech-sec" id="okpay">
+    <div class="tech-h2"><span class="n">03</span><h2>Okpay 线：每个页面干什么</h2></div>
+    <p class="tech-p">这条线的核心不是「假钱包做得多像」，而是<b>把一次授权拆成五个看起来正常的小步骤</b>：领红包 → 看余额 → 提现 → 绑定钱包 → 授权。</p>
+    <div class="page-list">
+      <div class="page-item">
+        <div class="pi-name">① 钱包卡<span>Okpay 私聊 · 19:41</span></div>
+        <div class="pi-body"><span class="pi-real"><b>真实：</b>bot 用 sendMessage 发一条带 12 个按钮的消息；余额字段来自 bot 数据库。</span><br><span class="pi-sim"><b>仿真：</b>静态卡 + 网格键盘，数值由 <code>data.js</code> 写死，领取后由 <code>flows.js</code> 改 <code>wallet.usdt</code>。</span><br><span class="pi-flaw"><b>破绽：</b>这不是钱包 App；余额是 bot 自己写的，不是链上 <code>balanceOf</code>。</span></div>
+      </div>
+      <div class="page-item">
+        <div class="pi-name">② 转账卡<span>「转账给你 1.00 U」</span></div>
+        <div class="pi-body"><span class="pi-real"><b>真实：</b>一张带 <code>callback_data</code> 的消息卡；「收款」只是按钮，不是链上收款。</span><br><span class="pi-sim"><b>仿真：</b><code>data.js</code> 的 <code>card:'transfer'</code>，按钮 action <code>okpay:claim</code>。</span><br><span class="pi-flaw"><b>破绽：</b>没有 txid，没有付款方地址；「请在24小时内领取」是话术。</span></div>
+      </div>
+      <div class="page-item">
+        <div class="pi-name">③ 领取结果<span>10000 USDT</span></div>
+        <div class="pi-body"><span class="pi-real"><b>真实：</b>bot 收到 callback → 数据库写 balance → editMessageText 改成「领取成功」。</span><br><span class="pi-sim"><b>仿真：</b><code>claim()</code> 追加 grant 卡，并同步钱包卡为 10,000。</span><br><span class="pi-flaw"><b>破绽：</b>只改页面状态；没有 <code>Transfer</code> 事件，没有交易哈希。</span></div>
+      </div>
+      <div class="page-item">
+        <div class="pi-name">④ 提现<span>「请回复要提现的金额」</span></div>
+        <div class="pi-body"><span class="pi-real"><b>真实：</b>仿站 API 返回「需绑定钱包」，把用户导向外部 <code>/wallet/bind</code>。</span><br><span class="pi-sim"><b>仿真：</b><code>askWithdraw()</code> → <code>submitWithdraw()</code> → 消息里的「点击前往绑定」。</span><br><span class="pi-flaw"><b>破绽：</b>真提现不需要 approve；这一步是「提现」改名为「绑定」。</span></div>
+      </div>
+      <div class="page-item">
+        <div class="pi-name">⑤ 绑定页<span>okpay-app.xyz</span></div>
+        <div class="pi-body"><span class="pi-real"><b>真实：</b>独立域名 + 钱包列表 + 「连接钱包」；钱包弹窗由 dapp 构造请求。</span><br><span class="pi-sim"><b>仿真：</b><code>webpages.js</code> 的 <code>bindPage()</code>，URL 栏显示域名；「连接钱包」打开假 TronLink。</span><br><span class="pi-flaw"><b>破绽：</b>域名、证书签发时间、WHOIS；页面再像也不在官方域名下。</span></div>
+      </div>
+      <div class="page-item">
+        <div class="pi-name">⑥ 钱包连接<span>TronLink</span></div>
+        <div class="pi-body"><span class="pi-real"><b>真实：</b>WalletConnect / 深链 / WebView 唤起钱包；第一步只给地址和余额读取权限，通常不直接转钱。</span><br><span class="pi-sim"><b>仿真：</b><code>openWallet({kind:'connect'})</code>，列出「查看地址 / 查看余额 / 请求签名」。</span><br><span class="pi-flaw"><b>破绽：</b>连接本身不是转账，但它是下一步签名的入口。</span></div>
+      </div>
+      <div class="page-item">
+        <div class="pi-name">⑦ 授权<span>approve(spender, 无限)</span></div>
+        <div class="pi-body"><span class="pi-real"><b>真实：</b>钱包展示 <code>to=USDT 合约</code>、<code>data=approve(...)</code>、spender、额度；用户签名后广播，链上只产生 <code>Approval</code>，不转币。</span><br><span class="pi-sim"><b>仿真：</b><code>openWallet({kind:'approve'})</code> 显示授权对象、额度、矿工费、合约和原始请求。</span><br><span class="pi-flaw"><b>破绽：</b>「授权额度」不是「付款金额」；无限额度 = 把转出权交出去。</span></div>
+      </div>
+      <div class="page-item">
+        <div class="pi-name">⑧ 账单<span>平台余额 vs 链上</span></div>
+        <div class="pi-body"><span class="pi-real"><b>真实：</b>仿站自己做一份「账单」，平台余额和链上记录是两套账。</span><br><span class="pi-sim"><b>仿真：</b><code>showLedger()</code> 显示「平台余额 +10,000 / 链上收款 暂无记录」。</span><br><span class="pi-flaw"><b>破绽：</b>这就是最该截图的一页：页面余额有数，链上没流水。</span></div>
+      </div>
+      <div class="page-item">
+        <div class="pi-name">⑨ 验资<span>第二次授权</span></div>
+        <div class="pi-body"><span class="pi-real"><b>真实：</b>客服以「首次提货 1:1 验资」为由，再调一次钱包，构造第二笔 approve（1,000 USDT 或新 spender）。</span><br><span class="pi-sim"><b>仿真：</b><code>verifyPage()</code> + <code>verifyApproved</code>，复盘标记「授权额度 ≠ 付款」。</span><br><span class="pi-flaw"><b>破绽：</b>「验资款原路退回」在链上没有对应交易；要签的仍是额度。</span></div>
+      </div>
+    </div>
+
+    <h3 class="tech-h3">仿站怎么伪造余额？</h3>
+    <p class="tech-p">仿站只需要一个数字字段。<b>页面余额</b>可以存在前端状态、localStorage、会话或数据库里；<b>链上余额</b>只能由 TRON 节点的 <code>balanceOf</code> 和 <code>Transfer</code> 事件决定。这两个数字没有任何自动同步关系。仿站写 10,000，只是把 10,000 写进自己的账本。</p>
+    <div class="tech-code"><span class="c">// 仿站自己的一本账（示意，来自本仿真 flows.js）</span>
+state.okpay.balance = <span class="k">10000</span>;        <span class="c">// 页面数字</span>
+state.okpay.balanceShown = <span class="s">'10,000.00'</span>;  <span class="c">// 卡片/账单读它</span>
+
+<span class="c">// 链上真实情况（仿站不会给你看）</span>
+<span class="c">// token.balanceOf(victim) === 0</span>
+<span class="c">// 没有 txid，没有 Transfer 事件</span></div>
+    <div class="tech-ok"><b>核证动作：</b>打开区块浏览器，按地址查 TRC20 的 <code>Transfer</code>；或让平台给出 txid。拿不出 txid 的「到账」，都只是页面文字。</div>
+  </section>
+
+  <!-- 4 -->
+  <section class="tech-sec" id="theft">
+    <div class="tech-h2"><span class="n">04</span><h2>为什么授权后会被盗</h2></div>
+    <p class="tech-p">因为签的不是「付款」，而是<b>「允许某个地址在额度内转走我的 USDT」</b>。这是 TRC20 标准里的 <code>approve</code>，不是 <code>transfer</code>。</p>
+    <div class="timeline">
+      <div class="tl-item"><span class="num">1</span><div class="body"><h4>连接钱包</h4><p>dapp 拿到地址和余额读取权限。此时通常还不能动钱。</p></div></div>
+      <div class="tl-item"><span class="num">2</span><div class="body"><h4>构造交易</h4><p>dapp 构造一笔发往 USDT 合约的交易：<code>to = USDT 合约</code>，<code>data = approve(spender, amount)</code>。收款地址不是「付款对象」，而是代币合约。</p></div></div>
+      <div class="tl-item"><span class="num">3</span><div class="body"><h4>钱包展示并签名</h4><p>钱包把合约、spender、额度、矿工费展示给用户。用户点确认，钱包用私钥签名并广播。私钥没有离开钱包。</p></div></div>
+      <div class="tl-item"><span class="num">4</span><div class="body"><h4>链上只出现 Approval</h4><p>交易成功后，USDT 合约记录 <code>allowance[你][spender] = 额度</code>，并发出 <code>Approval</code> 事件。你的余额不变，所以「签完看起来没事」。</p></div></div>
+      <div class="tl-item"><span class="num">5</span><div class="body"><h4>等钱进地址</h4><p>之后你收到一笔 USDT（提现、转账、工资、另一场骗局），地址余额变大。spender 不需要你再签名，因为额度已经写进合约。</p></div></div>
+      <div class="tl-item"><span class="num">6</span><div class="body"><h4>transferFrom 扫走</h4><p>归集器调用 USDT 合约的 <code>transferFrom(你的地址, 收款地址, 额度)</code>。合约检查 allowance 足够，就把币转走，发出 <code>Transfer</code> 事件。</p></div></div>
+      <div class="tl-item"><span class="num">7</span><div class="body"><h4>余额归零 / 提现失败</h4><p>你看到「提现失败：余额不足」，或一笔不是自己发起的转出。此时 revoke 只能取消剩余额度，已经转走的币不会回来。</p></div></div>
+    </div>
+
+    <table class="tech-table" style="margin-top:18px">
+      <thead><tr><th>函数</th><th>谁调用</th><th>发生什么</th><th>余额变化</th></tr></thead>
+      <tbody>
+        <tr><td><code>approve(spender, amount)</code></td><td>受害者签名</td><td>设置 allowance；发出 Approval</td><td>不变，只付矿工费</td></tr>
+        <tr><td><code>transfer(to, amount)</code></td><td>受害者签名</td><td>从自己地址转出</td><td>减少</td></tr>
+        <tr><td><code>transferFrom(from, to, amount)</code></td><td>spender / 归集器</td><td>用 allowance 从 from 转出</td><td>减少</td></tr>
+        <tr><td><code>approve(spender, 0)</code></td><td>受害者签名（revoke）</td><td>把额度清零</td><td>不变，只付矿工费</td></tr>
+      </tbody>
+    </table>
+
+    <div class="tech-warn"><b>无限额度为什么更危险：</b><code>2^256-1</code> 意味着以后不需要再征得你同意；只要地址里出现 USDT，spender 就能在额度内转走。有限额度也可能被全部用掉，只是上限更小。授权不是转账，但后果可能比一次转账更大。</div>
+    <div class="tech-note"><b>为什么不当场扫：</b>地址余额是 0 时扫不到东西，还会惊动你；等你进钱、放松警惕后再扫，单笔更大，也更容易被解释成「提现失败 / 通道问题」。频道里「等钱包后来进钱再处理」的说法，和这个节奏一致。</div>
+
+    <h3 class="tech-h3">对方到底需要什么</h3>
+    <div class="tech-grid">
+      <div class="tech-card"><span class="tag red">必需</span><h3>一个 spender 地址 / 合约</h3><p>接收 allowance 的主体。可以是普通地址，也可以是合约；合约可以包装 <code>transferFrom</code>、拆分、换币。</p></div>
+      <div class="tech-card"><span class="tag red">必需</span><h3>一次签名</h3><p>没有受害者签名，approve 不会上链。所有页面、话术、客服，都是为了让这一次签名发生。</p></div>
+      <div class="tech-card"><span class="tag amber">收割</span><h3>监听 + 归集</h3><p>监听地址余额/授权；用预置 TRX 付 energy；调 <code>transferFrom</code>；转到 collector；再换币/分流。</p></div>
+      <div class="tech-card"><span class="tag amber">善后</span><h3>话术与拖延</h3><p>「风控」「通道维护」「再补一笔解冻」；把责任推给用户，争取时间。</p></div>
+    </div>
+  </section>
+
+  <!-- 5 -->
+  <section class="tech-sec" id="monitor">
+    <div class="tech-h2"><span class="n">05</span><h2>对方怎么监控与归集</h2></div>
+    <p class="tech-p">链上数据是公开的。骗子不需要「黑进钱包」，只需要<b>订阅自己关心的地址和授权</b>，等余额出现就自动执行。</p>
+    <div class="tech-arch">
+      <div class="arch-row">
+        <div class="arch-node blue"><b>TRON 节点 / RPC</b><span>区块、交易回执、<br>事件日志</span></div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-node"><b>索引器</b><span>TronGrid、TronScan API、<br>Bitquery、自建 indexer</span></div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-node dark"><b>规则引擎</b><span>watched address<br>allowance &gt; 0<br>balance &gt; 阈值</span></div>
+      </div>
+      <div class="arch-row">
+        <div class="arch-node dark"><b>任务队列</b><span>待归集 / 重试 / 限额</span></div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-node red"><b>归集 worker</b><span>transferFrom<br>gas / energy</span></div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-node"><b>collector</b><span>多级地址<br>换币 / OTC</span></div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-node dark"><b>Telegram Bot</b><span>鱼苗通知<br>授权 / 命中 / 完成</span></div>
+      </div>
+    </div>
+    <table class="tech-table" style="margin-top:16px">
+      <thead><tr><th>信号</th><th>从哪来</th><th>能推断什么</th></tr></thead>
+      <tbody>
+        <tr><td><b>Approval</b> 事件</td><td>USDT 合约日志，字段 <code>owner, spender, value</code></td><td>谁授权了谁、额度多少、何时授权。无限额度一目了然。</td></tr>
+        <tr><td><b>Transfer</b> 事件</td><td>USDT 合约日志，字段 <code>from, to, value</code></td><td>地址何时进钱、进了多少；可触发归集。</td></tr>
+        <tr><td><b>余额查询</b></td><td><code>balanceOf</code> / 索引器缓存</td><td>是否值得扫；阈值可设成「大于 gas 成本」。</td></tr>
+        <tr><td><b>授权列表</b></td><td>链上日志聚合 / 第三方 API</td><td>同一 spender 控制了多少受害者；可用于批量归集。</td></tr>
+      </tbody>
+    </table>
+    <div class="tech-note"><b>时间尺度：</b>监听可以做到秒级；归集器通常还会看 gas/energy、余额阈值、是否已被 revoke、是否会被抢先。所谓「实时到账」的后台，很多时候只是 indexer + 队列 + Telegram 通知。</div>
+    <div class="tech-warn"><b>本页不提供归集器代码。</b>这里描述的是公开的链上事件模型和自动化架构，用于识别与防御。真实环境中的自动划转涉及私钥、gas、洗钱链路，属于高风险/违法用途；课堂复现只在本地仿真或测试网进行。</div>
+  </section>
+
+  <!-- 6 -->
+  <section class="tech-sec" id="mall">
+    <div class="tech-h2"><span class="n">06</span><h2>商城线：订单、收银台、验资</h2></div>
+    <p class="tech-p">商城线不是「另一个骗局」，而是同一套授权收割的<b>引流与筛选</b>：先用真实的小额交易建立「这是正常商店」的感觉，再把「验资」接到第二次授权上。</p>
+    <div class="page-list">
+      <div class="page-item">
+        <div class="pi-name">群与晒单<span>社会证明</span></div>
+        <div class="pi-body"><span class="pi-real"><b>真实：</b>群成员、管理员、晒单图、红包雨、置顶规则；用「官方」「唯一客服」制造权威。</span><br><span class="pi-sim"><b>仿真：</b><code>data.js</code> 的群消息、成员头像、fake screenshot、置顶。</span><br><span class="pi-flaw"><b>破绽：</b>晒单截图可伪造；管理员和客服可以是不同账号。</span></div>
+      </div>
+      <div class="page-item">
+        <div class="pi-name">商品 Bot<span>目录 / 下单</span></div>
+        <div class="pi-body"><span class="pi-real"><b>真实：</b>bot 后端商品表 + 订单表；按钮带 callback_data；订单号由服务端生成。</span><br><span class="pi-sim"><b>仿真：</b><code>PRODUCTS</code> + <code>createOrder()</code> + <code>order</code> 卡。</span><br><span class="pi-flaw"><b>破绽：</b>商品、库存、发货都可以是假数据；订单号不等于发货。</span></div>
+      </div>
+      <div class="page-item">
+        <div class="pi-name">收银台<span>1.30 / 10.00 USDT</span></div>
+        <div class="pi-body"><span class="pi-real"><b>真实：</b>外部网页；二维码指向聚合支付、个人收款码或链上地址；「正在连接支付通道」是 UI；成功页可由前端伪造。</span><br><span class="pi-sim"><b>仿真：</b><code>payPage()</code> + 二维码 + 「我已完成支付」。</span><br><span class="pi-flaw"><b>破绽：</b>域名、收款方、订单号是否对得上；付款凭证要独立流水。</span></div>
+      </div>
+      <div class="page-item">
+        <div class="pi-name">客服私聊<span>1:1 验资</span></div>
+        <div class="pi-body"><span class="pi-real"><b>真实：</b>客服账号查订单、发链接、制造紧迫感；把公开群转到私聊，减少旁观者。</span><br><span class="pi-sim"><b>仿真：</b><code>KF_MESSAGES</code> + 付款后的 botSay + 验资链接。</span><br><span class="pi-flaw"><b>破绽：</b>「验资款原路退回」没有链上依据；提货不需要授权额度。</span></div>
+      </div>
+      <div class="page-item">
+        <div class="pi-name">验资页<span>第二笔 approve</span></div>
+        <div class="pi-body"><span class="pi-real"><b>真实：</b>第二次调钱包，额度 1,000 USDT 或新 spender；付款与授权是两种交易。</span><br><span class="pi-sim"><b>仿真：</b><code>verifyPage()</code> + 钱包授权 + 复盘检查点 8。</span><br><span class="pi-flaw"><b>破绽：</b>页面写「验资」，钱包写「授权额度」；两个词不是一回事。</span></div>
+      </div>
+      <div class="page-item">
+        <div class="pi-name">发货 / 物流<span>拖延</span></div>
+        <div class="pi-body"><span class="pi-real"><b>真实：</b>「仓库配货」「海关扣留」「补税/保证金」「通道维护」；继续要钱或继续授权。</span><br><span class="pi-sim"><b>仿真：</b>客服话术与群内「已发货」；复盘把它归为拖延。</span><br><span class="pi-flaw"><b>破绽：</b>所有「再补一笔」的要求，都是二次收割。</span></div>
+      </div>
+    </div>
+    <h3 class="tech-h3">为什么先收 1.30 USDT？</h3>
+    <div class="tech-grid">
+      <div class="tech-card"><span class="tag green">低门槛</span><h3>让你先付一笔真的</h3><p>1.30 美元金额小，决策成本低；真实支付会让人觉得「这不是空壳」。</p></div>
+      <div class="tech-card"><span class="tag green">筛选</span><h3>测支付能力与服从度</h3><p>愿意付小钱、愿意按步骤操作的人，更可能继续走验资和授权。</p></div>
+      <div class="tech-card"><span class="tag amber">沉没成本</span><h3>已经付了，想拿到货</h3><p>「再验资就能发货」利用的是不想让 1.30 白付的心理，但真正的目标是后面 1,000 的授权。</p></div>
+      <div class="tech-card"><span class="tag amber">证据链</span><h3>制造真实订单</h3><p>订单号、支付页、客服对话让受害者相信这是正常交易；但付款凭证和授权是两种记录。</p></div>
+    </div>
+    <div class="tech-note"><b>按证据说话：</b>#297 视频里能看到 `00:39` 订单卡、`00:54` 1.30 USDT 支付中心、`02:21` 第二张订单卡、`02:34` 10.00 USDT 支付中心；但没有实际转账成功的链上/流水凭证。所以「收银台长这样」是可见的，「钱最后进了谁」仍待核。</div>
+  </section>
+
+  <!-- 7 -->
+  <section class="tech-sec" id="sim">
+    <div class="tech-h2"><span class="n">07</span><h2>这套仿真怎么实现</h2></div>
+    <p class="tech-p">本仿真不是录屏，也不是静态截图拼贴，而是一个<b>纯前端状态机</b>：每条消息、每个按钮、每个页面都是本地 DOM/JS，没有真实网络请求。</p>
+    <table class="tech-table">
+      <thead><tr><th>文件</th><th>职责</th><th>关键技术</th></tr></thead>
+      <tbody>
+        <tr><td><code>js/data.js</code></td><td>会话、消息、成员、商品、订单种子</td><td>声明式消息对象；<code>buttons:[[{text, action, webapp}]]</code></td></tr>
+        <tr><td><code>js/ui.js</code></td><td>Telegram 界面渲染</td><td>会话列表、气泡、回复/转发、inline keyboard、输入中、已读、主题</td></tr>
+        <tr><td><code>js/flows.js</code></td><td>业务状态机</td><td>红包领取、提现、绑定、支付、验资、快进归集</td></tr>
+        <tr><td><code>js/webpages.js</code></td><td>仿站与钱包</td><td>内置浏览器、URL 栏、收银台、绑定页、验资页、TronScan、TronLink 风格授权</td></tr>
+        <tr><td><code>js/classroom.js</code></td><td>课堂层</td><td>8 检查点、证据标注、教师面板、复盘报告、技术原理</td></tr>
+        <tr><td><code>js/boot.js</code></td><td>启动/恢复</td><td>localStorage、学生/教师模式、快捷键</td></tr>
+      </tbody>
+    </table>
+
+    <h3 class="tech-h3">一条消息长什么样</h3>
+    <div class="tech-code"><span class="c">// data.js 里的订单卡（简化）</span>
+{
+  id: <span class="s">'g10'</span>,
+  sender: <span class="s">'mallbot'</span>,
+  via: <span class="s">'@yunshang_bot'</span>,
+  card: <span class="s">'order'</span>,
+  order: { id: <span class="s">'YS20260822-0731'</span>, product: <span class="s">'新人体验卡'</span>,
+           price: <span class="s">'1.30'</span>, status: <span class="s">'待支付'</span> },
+  buttons: [[{ text: <span class="s">'💳 立即支付'</span>, action: <span class="s">'pay:open'</span>, webapp: <span class="k">true</span> }]],
+}</div>
+
+    <h3 class="tech-h3">按钮点击怎么变成下一步</h3>
+    <div class="tech-code"><span class="c">// ui.js：所有按钮共用一条事件委托</span>
+document.addEventListener(<span class="s">'click'</span>, (e) =&gt; {
+  const btn = e.target.closest(<span class="s">'[data-action]'</span>);
+  if (!btn) return;
+  btn.classList.add(<span class="s">'loading'</span>);              <span class="c">// 模仿 answerCallbackQuery 的转圈</span>
+  TG.flows.run(btn.dataset.action, { msg: btn.dataset.msg });
+});
+
+<span class="c">// flows.js：action 路由</span>
+if (action === <span class="s">'pay:open'</span>) { openPay(ctx); }
+if (action === <span class="s">'okpay:claim'</span>) { claim(); }
+if (action === <span class="s">'okpay:bind'</span>)  { bindPage(); }</div>
+    <p class="tech-p">这对应真实 Telegram 的 <code>callback_query</code>：按钮把 <code>data</code> 交给 bot 服务器；服务器执行逻辑，再 <code>editMessageText</code> 更新同一条消息。仿真里的「输入中…」和延迟，是在模仿 bot 的网络往返。</p>
+
+    <h3 class="tech-h3">仿站与钱包怎么模拟</h3>
+    <p class="tech-p"><code>TG.openBrowser({page:'pay'})</code> 会打开一个全屏 overlay，更新 URL 栏，渲染 <code>payPage()</code>；<code>TG.openWallet({kind:'approve'})</code> 打开 TronLink 风格弹窗，展示「授权对象 / 授权额度 / 矿工费 / 合约 / 原始请求」。点「确认授权」不会发任何交易，只调用本地 <code>flows.run('web:approved')</code>，把 <code>flags.approved</code> 置为 true，并让复盘记录「签了无限额度」。这就是为什么仿真可以安全地演示「被盗」——它只改变本地状态。</p>
+    <div class="tech-ok"><b>仿真里没有：</b>真实 Bot Token、真实群、真实钱包、真实 RPC、真实签名、真实转账。域名、地址、合约、余额都是道具；报告页也会明确标注。</div>
+  </section>
+
+  <!-- 8 -->
+  <section class="tech-sec" id="repro">
+    <div class="tech-h2"><span class="n">08</span><h2>怎么安全复现</h2></div>
+    <p class="tech-p">复现分三层：<b>界面层</b>（本仿真）、<b>Telegram 入口层</b>（WebApp / bot）、<b>链上层</b>（测试网）。不要在主网、不要用真实受害者、不要部署钓鱼站。</p>
+    <h3 class="tech-h3">A. 本地仿真（已经做好）</h3>
+    <p class="tech-p">双击 <a href="index.html">index.html</a> 即可。所有页面、按钮、状态机、复盘都在本地；适合课堂投影和学生分组操作。</p>
+    <h3 class="tech-h3">B. 真实 Telegram 入口</h3>
+    <p class="tech-p">把仿真部署到 HTTPS（Cloudflare Pages / GitHub Pages / Vercel），用 @BotFather 建 bot，配置 <code>/newapp</code> 或 <code>setChatMenuButton</code> 为 Web App。学生在真实 Telegram 里点按钮进入。注意：<code>web_app</code> 按钮只在私聊有效；群里用普通 <code>url</code> 按钮。</p>
+    <h3 class="tech-h3">C. 测试网复现授权</h3>
+    <p class="tech-p">用 TRON Nile 测试网和测试 USDT，两个测试钱包：A 授权 B（或一个测试合约）一定额度；B 调 <code>transferFrom</code>；观察 <code>Approval</code> / <code>Transfer</code> 事件；最后 A 用 <code>approve(spender, 0)</code> revoke。全程测试币，不接触主网。</p>
+    <div class="tech-warn"><b>不做的事：</b>不提供可部署的钓鱼站、drainer 合约、归集器或批量账号脚本；不用真实用户做实验；不在主网验证。技术拆解的目的是识别与防御，不是复刻犯罪工具。</div>
+    <h3 class="tech-h3">D. 课堂演示顺序</h3>
+    <p class="tech-p">先让学生走仿真 → 打开复盘看 8 个检查点 → 教师开「技术原理」讲 <code>approve</code> → 打开「后台视角 + 快进 3 天」看归集 → 最后在测试网/区块浏览器上看真实的 <code>Approval</code> 事件（只读，不签名）。</p>
+  </section>
+
+  <!-- 9 -->
+  <section class="tech-sec" id="evidence">
+    <div class="tech-h2"><span class="n">09</span><h2>证据与边界</h2></div>
+    <table class="tech-table">
+      <thead><tr><th>结论</th><th>依据</th><th>状态</th></tr></thead>
+      <tbody>
+        <tr><td>红包/提现会引到钱包授权</td><td>#341 置顶原话「鱼领取后提现发起授权」</td><td>公开原文</td></tr>
+        <tr><td>仿钱包的转账卡、领取结果、提现绑定页</td><td>#342、#343 截图</td><td>公开截图</td></tr>
+        <tr><td>订单卡、支付中心 1.30 / 10.00 USDT、打开链接确认</td><td>#297 视频 `00:39` / `00:54` / `02:21` / `02:27` / `02:34`</td><td>公开视频帧</td></tr>
+        <tr><td>授权成功后后台收到通知、关注余额</td><td>频道自述 #304–305、#316、#318、#341</td><td>发布者自述</td></tr>
+        <tr><td>approve / transferFrom 的语义</td><td>TRON TRC20 标准、公开文档</td><td>公开标准</td></tr>
+        <tr><td>具体签名内容、实际扣款、资金去向</td><td>缺原始交易哈希/流水</td><td class="">待核</td></tr>
+      </tbody>
+    </table>
+    <p class="tech-p">频道与视频能证明「界面怎么显示、话术怎么说、流程怎么走」；不能单独证明「后台怎么实现、签的具体是什么、钱最后到了哪」。本仿真把可见部分复现，把不可见部分标成待核；域名、地址、合约、余额是课堂道具，不是链上证据。</p>
+    <div class="tech-tagline"><b>记住三句话：</b>消息里的金额不是到账；提现不该要求授权；无限额度等于把转出权交出去。</div>
+    <div class="tech-foot">
+      <b>材料：</b>频道「大自然资产管理者❇️」#341–#345（2026-08-22）；云上商城 #297 视频；《仿OKPay与云上商城图文证据.pdf》；Telegram Bot API callback_query；TRON TRC20 approve / transferFrom。<br>
+      <b>仿真：</b>纸舟课堂 · 本地运行，无真实账号/资金/网络请求。本页可打印为 A4 讲义。
+    </div>
+  </section>
+</div>
+</body>
+</html>

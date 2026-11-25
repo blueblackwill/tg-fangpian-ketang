@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>后台与监控 · 技术原理与代码段</title>
+<link rel="stylesheet" href="css/backend.css">
+</head>
+<body>
+<div class="be-bar">
+  <span class="be-brand"><span class="boat"><svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 17.5 16 5l13 12.5-4.5 9.5h-17z"/><path d="M16 5v17M3 17.5h26"/></svg></span>纸舟课堂 · 后台与监控</span>
+  <span class="spacer"></span>
+  <a class="btn" href="index.html#split">左右对照</a>
+  <a class="btn" href="tech.html">技术原理</a>
+  <a class="btn" href="walk.html">逐页讲解</a>
+  <button class="btn primary" onclick="window.print()">打印 / 存 PDF</button>
+</div>
+
+<div class="be-layout">
+  <nav class="be-nav">
+    <h2>目录</h2>
+    <a href="#arch">01 总架构</a>
+    <a href="#bot">02 Telegram webhook</a>
+    <a href="#db">03 数据表与幂等</a>
+    <a href="#decode">04 Approval / Transfer 解码</a>
+    <a href="#index">05 索引器</a>
+    <a href="#rule">06 规则引擎</a>
+    <a href="#queue">07 队列与 worker</a>
+    <a href="#alert">08 操作员通知</a>
+    <a href="#defend">09 防御：查授权与撤销</a>
+    <a href="#monitor">10 监控原理</a>
+    <a href="#front">11 前端 approve 伪代码</a>
+    <a href="#check">12 防御清单</a>
+    <a href="#boundary">13 证据与边界</a>
+  </nav>
+
+  <main class="be-main">
+    <section class="be-hero">
+      <div class="be-kicker">Backend &amp; monitoring, with code</div>
+      <h1>后台与监控：从一条 callback 到一次归集</h1>
+      <p class="lead">左边仿真里的每一次点击，后台都会落到几个固定组件：bot 服务、数据库、索引器、规则引擎、队列、worker、归集地址、操作员 bot。这一页把每一段用代码段写清楚。</p>
+      <div class="be-warn"><b>边界：</b>这是识别与防御材料，不是可部署的盗币工具。Telegram、数据库、索引、规则、撤销都是可运行/可防御代码；<b>构造并签名 transferFrom 的那一步故意用 <code>NotImplementedError</code> 占位</b>，不提供可运行实现。</div>
+      <div class="be-links">
+        <a href="index.html#split">打开左右对照，点「后台代码」</a>
+        <a href="tech.html">看链上机制</a>
+        <a href="walk.html">看受害者的每一页</a>
+      </div>
+    </section>
+
+    <section class="be-sec" id="arch">
+      <h2>01 总架构：一条点击，七个组件</h2>
+      <p class="be-sub">先看数据怎么流，再看每一段代码。不要把“后台”想成一个黑箱，它是一条流水线。</p>
+      <div class="be-diagram">[Telegram Bot API]
+   │  webhook / long poll
+   ▼
+[bot 服务] ──写──▶ [users / orders / callbacks / approvals]
+   │
+   ├─▶ [dapp 前端]  bind / pay / verify
+   ├─▶ [queue] ──▶ [worker] ──▶ (攻击步骤：省略) ──▶ [collector]
+   └─▶ [operator bot]  alerts
+          ▲
+[索引器] ──读── [TronGrid / 全节点] ──▶ Approval / Transfer</div>
+      <table class="be-table">
+        <thead><tr><th>组件</th><th>职责</th><th>在骗局里的作用</th></tr></thead>
+        <tbody>
+          <tr><td>bot 服务</td><td>收 update、回消息、改消息、发按钮</td><td>把“点击”变成数据库里的状态</td></tr>
+          <tr><td>dapp 前端</td><td>仿站绑定/收银/验资页</td><td>把“提现”包装成连接/授权</td></tr>
+          <tr><td>数据库</td><td>用户、订单、回调、授权、任务</td><td>维持“平台余额/订单状态”的假账</td></tr>
+          <tr><td>索引器</td><td>读 Approval / Transfer</td><td>知道谁授权了、谁进钱了</td></tr>
+          <tr><td>规则引擎</td><td>按额度、spender、余额打分</td><td>决定先盯谁、何时动手</td></tr>
+          <tr><td>队列/worker</td><td>异步重试、状态机</td><td>把“监控”变成可批量执行</td></tr>
+          <tr><td>操作员 bot</td><td>通知、看板</td><td>让人不用盯链也能收割</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="be-sec" id="bot">
+      <h2>02 Telegram webhook：点击先落库</h2>
+      <p class="be-sub">bot 不需要“很聪明”，它只需要可靠地收 callback、去重、入队。</p>
+      <div class="be-code"><div class="be-code-h"><span>webhook.py · 收 callback，幂等入队</span><em>python</em></div><pre><code>@app.post(&quot;/tg/{secret}&quot;)
+async def tg(secret: str, update: dict):
+    if not hmac.compare_digest(secret, BOT_SECRET):
+        raise HTTPException(status_code=403)
+
+    if &quot;callback_query&quot; in update:
+        cq = update[&quot;callback_query&quot;]
+        # 同一个 callback_query.id 只处理一次
+        if not await db.claim_callback(cq[&quot;id&quot;]):
+            return {&quot;ok&quot;: True}
+        await queue.enqueue(&quot;callback&quot;, {&quot;id&quot;: cq[&quot;id&quot;], &quot;data&quot;: cq[&quot;data&quot;]})
+        await bot.answer_callback_query(cq[&quot;id&quot;])
+
+    return {&quot;ok&quot;: True}</code></pre></div>
+      <ul>
+        <li><b>secret</b>：webhook URL 里带密钥，防止别人伪造 update；生产还要校验来源 IP/签名。</li>
+        <li><b>callback_query.id</b>：同一个点击可能重投；<code>claim_callback</code> 用唯一键保证只处理一次。</li>
+        <li><b>answerCallbackQuery</b>：不回应，客户端按钮会一直转圈；这是“像正常机器人”的细节。</li>
+        <li><b>入队</b>：webhook 只做轻量写库，耗时动作交给 worker，避免 Telegram 超时重投。</li>
+      </ul>
+      <div class="be-note">受害者看到的“秒回/按钮变了”，背后是 <code>editMessageText</code> + callback；不是链上确认。</div>
+    </section>
+
+    <section class="be-sec" id="db">
+      <h2>03 数据表：假账、真事件、任务</h2>
+      <p class="be-sub">后台至少有三类数据：平台假账、链上事件、待执行任务。三张表不能混。</p>
+      <div class="be-code"><div class="be-code-h"><span>schema.sql · 最小表结构</span><em>sql</em></div><pre><code>create table if not exists users (
+  tg_id      bigint primary key,
+  username   text,
+  created_at timestamptz default now()
+);
+
+create table if not exists orders (
+  id         text primary key,
+  user_id    bigint references users(tg_id),
+  amount     numeric(18,6) not null,
+  status     text not null,          -- created / pending / paid / shipped
+  created_at timestamptz default now()
+);
+
+create table if not exists approvals (
+  txid       text not null,
+  log_index  int  not null,
+  owner      text not null,
+  spender    text not null,
+  value      numeric(78,0) not null,
+  block_ts   timestamptz,
+  primary key (txid, log_index)       -- 幂等键
+);
+
+create table if not exists jobs (
+  id         bigserial primary key,
+  kind       text not null,
+  payload    jsonb not null,
+  status     text not null default &#x27;queued&#x27;,
+  attempts   int  not null default 0,
+  unique (kind, (payload-&gt;&gt;&#x27;key&#x27;))
+);</code></pre></div>
+      <ul>
+        <li><b>orders</b>：订单状态是 bot 写的，不是支付机构回调；<code>paid</code> 可以是前端/客服手动改。</li>
+        <li><b>approvals</b>：主键 <code>(txid, log_index)</code> 是幂等键；同一条事件重复扫不会重复入账。</li>
+        <li><b>jobs</b>：<code>unique(kind, payload->>'key')</code> 防止同一授权被重复排队。</li>
+      </ul>
+    </section>
+
+    <section class="be-sec" id="decode">
+      <h2>04 Approval / Transfer 解码：事件才是真的</h2>
+      <p class="be-sub">TRC20 的授权和转账都会发事件。看懂 topic 和 data，就不需要“猜”页面。</p>
+      <div class="be-code"><div class="be-code-h"><span>decode.py · 只读解析事件</span><em>python</em></div><pre><code>APPROVAL_TOPIC = &quot;0x8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925&quot;
+TRANSFER_TOPIC = &quot;0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef&quot;
+USDT_DECIMALS  = 6
+
+def addr(topic: str) -&gt; str:
+    return &quot;0x&quot; + topic[-40:]
+
+def decode_approval(log: dict) -&gt; dict:
+    return {
+        &quot;owner&quot;:   addr(log[&quot;topics&quot;][1]),
+        &quot;spender&quot;: addr(log[&quot;topics&quot;][2]),
+        &quot;value&quot;:   int(log[&quot;data&quot;], 16),
+    }
+
+def decode_transfer(log: dict) -&gt; dict:
+    return {
+        &quot;from&quot;:  addr(log[&quot;topics&quot;][1]),
+        &quot;to&quot;:    addr(log[&quot;topics&quot;][2]),
+        &quot;value&quot;: int(log[&quot;data&quot;], 16) / 10 ** USDT_DECIMALS,
+    }</code></pre></div>
+<p><b>接口声明</b>（只声明，不实现；这就是钱包弹窗和 <code>transferFrom</code> 对应的函数形态）：</p><div class="be-code"><div class="be-code-h"><span>IERC20.sol · 只声明接口</span><em>solidity</em></div><pre><code>interface IERC20 {
+    function approve(address spender, uint256 amount) external returns (bool);
+    function allowance(address owner, address spender) external view returns (uint256);
+    function transferFrom(address from, address to, uint256 amount) external returns (bool);
+}</code></pre></div>
+      <ul>
+        <li><b>topic[0]</b> 是事件签名哈希；<code>Approval(address,address,uint256)</code> 和 <code>Transfer(address,address,uint256)</code> 是固定值。</li>
+        <li><b>topic[1]/[2]</b> 是 indexed 地址，取后 40 个 hex 字符；<b>data</b> 是额度/金额。</li>
+        <li>USDT 是 6 位小数；<code>1000000</code> = 1 USDT，不要按 18 位算。</li>
+        <li><b>Approval 不产生 Transfer</b>：授权时余额不变，所以受害者当时看不到“被扣”。</li>
+      </ul>
+    </section>
+
+    <section class="be-sec" id="index">
+      <h2>05 索引器：轮询、确认数、游标</h2>
+      <p class="be-sub">监控不是“盯着一个页面”，是持续读链上事件，并且知道读到哪。</p>
+      <div class="be-code"><div class="be-code-h"><span>indexer.py · 按时间游标轮询 Approval</span><em>python</em></div><pre><code>def poll_approvals(cursor_ts: int):
+    while True:
+        r = requests.get(
+            f&quot;https://api.trongrid.io/v1/contracts/{USDT}/events&quot;,
+            params={
+                &quot;event_name&quot;: &quot;Approval&quot;,
+                &quot;only_confirmed&quot;: &quot;true&quot;,
+                &quot;limit&quot;: 200,
+                &quot;min_block_timestamp&quot;: cursor_ts,
+                &quot;order_by&quot;: &quot;block_timestamp,asc&quot;,
+            },
+            headers={&quot;TRON-PRO-API-KEY&quot;: API_KEY},
+            timeout=20,
+        )
+        r.raise_for_status()
+        rows = r.json().get(&quot;data&quot;, [])
+        if not rows:
+            break
+        for log in rows:
+            yield log
+        cursor_ts = int(rows[-1][&quot;block_timestamp&quot;]) + 1</code></pre></div>
+      <ul>
+        <li><b>only_confirmed</b>：只取已确认事件；否则链上回滚会让任务重复/错乱。</li>
+        <li><b>游标</b>：<code>min_block_timestamp</code> 记录上次位置；进程重启从游标继续。</li>
+        <li><b>分页/限流</b>：TronGrid 有速率限制；失败要指数退避，不能死循环。</li>
+        <li><b>全节点/WebSocket</b>：也可以用事件插件或 WebSocket 订阅；原理相同，仍要处理确认数和重连。</li>
+        <li><b>reorg</b>：确认数不足时先不执行；记录 block/txid，发现回滚要能撤销任务。</li>
+      </ul>
+    </section>
+
+    <section class="be-sec" id="rule">
+      <h2>06 规则引擎：先盯谁</h2>
+      <p class="be-sub">不是每个授权都值得动手；规则引擎按“无限额度、陌生 spender、余额”打分。</p>
+      <div class="be-code"><div class="be-code-h"><span>rules.py · 打分与分流</span><em>python</em></div><pre><code>MAX_UINT256 = 2 ** 256 - 1
+
+def score(approval: dict, balance: float, known: set[str]) -&gt; int:
+    s = 0
+    if approval[&quot;value&quot;] == MAX_UINT256:      s += 50  # 无限额度
+    if approval[&quot;spender&quot;] not in known:      s += 20  # 陌生 spender
+    if balance &gt; 30:                          s += 30  # &gt; 30 USDT
+    return s
+
+def decide(approval, balance, known):
+    s = score(approval, balance, known)
+    if s &gt;= 60:
+        queue.enqueue(&quot;sweep&quot;, {&quot;key&quot;: approval[&quot;txid&quot;]})
+    else:
+        queue.enqueue(&quot;alert&quot;, {&quot;key&quot;: approval[&quot;txid&quot;]})</code></pre></div>
+      <ul>
+        <li><b>无限额度</b>（<code>2^256-1</code>）是最强信号：一次授权，长期可转。</li>
+        <li><b>spender</b> 不在已知集合，加分；真实场景还会看合约创建时间、是否开源、历史调用。</li>
+        <li><b>余额</b>决定“现在有没有肉”；没有余额就继续监控，等进钱。</li>
+        <li>分数阈值是策略，不是法律；防御方也可以用同一套规则给自己报警。</li>
+      </ul>
+    </section>
+
+    <section class="be-sec" id="queue">
+      <h2>07 队列与 worker：攻击步骤故意省略</h2>
+      <p class="be-sub">后台的“自动化”体现在队列：状态、重试、幂等、死信。真正转币的那一步不提供。</p>
+      <div class="be-code"><div class="be-code-h"><span>worker.py · 只保留告警分支</span><em>python</em></div><pre><code>def worker(job):
+    if job.kind == &quot;alert&quot;:
+        notify_operator(job.payload)
+        return
+
+    if job.kind == &quot;sweep&quot;:
+        # 攻击步骤：这里会构造并签名 transferFrom。
+        # 本材料不提供可运行实现，避免被直接用于盗币。
+        raise NotImplementedError(&quot;educational only&quot;)</code></pre></div>
+      <ul>
+        <li><b>状态机</b>：queued → running → done / failed；失败重试要有上限。</li>
+        <li><b>幂等</b>：同一 <code>txid</code> 只能有一个 job；重试不能重复转。</li>
+        <li><b>死信</b>：多次失败进 dead letter，人工看，避免无限重试。</li>
+        <li><b>省略</b>：<code>sweep</code> 分支里的 <code>transferFrom</code> 构造/签名/广播不写；这是直接盗币能力。</li>
+      </ul>
+      <div class="be-note">从防御角度：如果看到“授权后余额不变、过几天才被转走”，对应的就是这条异步流水线。</div>
+    </section>
+
+    <section class="be-sec" id="alert">
+      <h2>08 操作员通知：人不用盯链</h2>
+      <p class="be-sub">后台把链上事件翻译成 Telegram 消息，操作员只需要看“谁可以动、动不动”。</p>
+      <div class="be-code"><div class="be-code-h"><span>alert.py · 把事件发到操作员 bot</span><em>python</em></div><pre><code>async def notify_operator(payload: dict):
+    await bot.send_message(
+        chat_id=OPERATOR_CHAT,
+        text=(
+            &quot;🔔 新授权\n&quot;
+            f&quot;owner={payload[&#x27;owner&#x27;]}\n&quot;
+            f&quot;spender={payload[&#x27;spender&#x27;]}\n&quot;
+            f&quot;value={payload[&#x27;value&#x27;]}\n&quot;
+            f&quot;txid={payload[&#x27;txid&#x27;]}&quot;
+        ),
+    )</code></pre></div>
+    </section>
+
+    <section class="be-sec" id="defend">
+      <h2>09 防御：查授权、撤销、再监控</h2>
+      <p class="be-sub">同一套事件和额度，可以用来保护自己。这一段是可运行的防御代码。</p>
+      <div class="be-code"><div class="be-code-h"><span>revoke.js · TronWeb 撤销授权</span><em>javascript</em></div><pre><code>const allowance = await usdt.allowance(owner, spender).call();
+
+if (!allowance.isZero()) {
+  const tx = await usdt.approve(spender, 0).send({
+    feeLimit: 100_000_000,
+  });
+  console.log(&quot;revoked&quot;, spender, tx);
+}</code></pre></div>
+      <ul>
+        <li>定期查自己地址的 <code>Approval</code>，重点看无限额度、陌生 spender。</li>
+        <li>发现异常先 <code>approve(spender, 0)</code>；再把剩余资产转到新地址。</li>
+        <li>撤销只停未来，不追回已经转走的；越早越好。</li>
+      </ul>
+      <div class="be-code"><div class="be-code-h"><span>audit.sql · 找出无限授权</span><em>sql</em></div><pre><code>-- 防御排查：找出无限授权，按时间倒序
+select owner, spender, value, block_ts
+from approvals
+where value = 115792089237316195423570985008687907853269984665640564039457584007913129639935
+order by block_ts desc
+limit 100;</code></pre></div>
+    </section>
+
+    <section class="be-sec" id="monitor">
+      <h2>10 监控原理：事件、确认、幂等、限流</h2>
+      <ul>
+        <li><b>事件驱动</b>：监控 <code>Approval</code>（授权发生）和 <code>Transfer</code>（资金移动），不要只盯页面余额。</li>
+        <li><b>确认数</b>：只对已确认事件执行；不同链/节点确认策略不同，Tron 也要考虑回滚。</li>
+        <li><b>幂等</b>：<code>(txid, log_index)</code> 唯一键；队列按 key 去重；重试不重复执行。</li>
+        <li><b>游标</b>：记录最后处理的时间/区块；重启可续；分页用 fingerprint/下一页。</li>
+        <li><b>限流/退避</b>：API 有速率限制；429/5xx 指数退避；失败进死信。</li>
+        <li><b>误报</b>：正常 dapp 也会授权；用 spender 白名单、额度、余额、人工复核降噪。</li>
+        <li><b>防御监控</b>：给自己地址配同样的规则；无限额度/陌生 spender 直接告警。</li>
+      </ul>
+      <div class="be-note">骗子的“监控”不是看受害者手机，是看链上公开事件；你的授权一旦上链，所有索引器都能看到。</div>
+    </section>
+
+    <section class="be-sec" id="front">
+      <h2>11 前端 approve 伪代码：钱包弹窗从哪来</h2>
+      <p class="be-sub">仿站不需要“偷私钥”，它只需要让钱包弹出一个标准的 <code>approve</code>。下面只展示调用形态，不提供完整站点。</p>
+      <div class="be-code"><div class="be-code-h"><span>malicious-dapp.js · 伪代码，不要用于真实地址</span><em>javascript</em></div><pre><code>// 恶意 dapp 的调用形态（伪代码，不要用于真实地址）
+// 真实钱包里，这一句会显示成“授权 USDT 额度 / 无限”
+
+const usdt = await tronWeb.contract().at(USDT_CONTRACT);
+await usdt.approve(spender, MAX_UINT256).send({
+  feeLimit: 100_000_000,
+});</code></pre></div>
+      <ul>
+        <li>钱包弹窗里的“授权额度”就是第二个参数；<code>MAX_UINT256</code> 显示为“无限”。</li>
+        <li>“授权对象”就是 <code>spender</code>；受害者通常不会核对。</li>
+        <li>授权不扣币，所以页面可以继续说“验证/提现”；余额不变，直到对方 <code>transferFrom</code>。</li>
+      </ul>
+    </section>
+
+    <section class="be-sec" id="check">
+      <h2>12 防御清单</h2>
+      <ol>
+        <li>任何“提现/验资/绑定”要求 <code>approve</code> 的，默认拒绝。</li>
+        <li>看到“无限额度”直接拒绝；不确认 spender 不签。</li>
+        <li>日常钱包只放小额；大额放冷钱包/多签。</li>
+        <li>定期查自己的 <code>Approval</code>；发现异常先 revoke，再转移剩余资产。</li>
+        <li>不点聊天里的支付链接；先看域名/证书/WHOIS。</li>
+        <li>已经签了：保留 txid、截图、聊天记录，报案；不再补钱。</li>
+      </ol>
+    </section>
+
+    <section class="be-sec" id="boundary">
+      <h2>13 证据与边界</h2>
+      <p><span class="be-tag real">实拍</span> #341–#344、#292/#295/#296、#297 能证明界面、话术、订单/收银流程。<span class="be-tag recon">重建</span> 后台组件、索引器、worker、鱼苗后台是按公开标准与案例结构做的教学重建。<span class="be-tag gap">缺口</span> 真实域名、历史 @、实际签名、txid、扣款与资金去向仍未取得。</p>
+      <p>这份材料能教“后台怎么运作、监控怎么看”，不能证明某个具体案件使用了完全相同的代码；也不提供可运行的盗币实现。</p>
+      <div class="be-one"><b>一句话：</b>页面可以演，事件不会；授权一旦上链，所有监控都能看见。</div>
+    </section>
+  </main>
+</div>
+</body>
+</html>

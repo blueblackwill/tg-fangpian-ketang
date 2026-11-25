@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Telegram</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231b2733'/%3E%3Cpath d='M5 18 16 7l11 11-3.8 8H8.8z' fill='none' stroke='%239ed3ff' stroke-width='1.6'/%3E%3Cpath d='M16 7v19M5 18h22' stroke='%239ed3ff' stroke-width='1.2'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/telegram.css">
+<link rel="stylesheet" href="css/classroom.css">
+<link rel="stylesheet" href="css/android.css">
+<link rel="stylesheet" href="css/split.css">
+</head>
+<body class="theme-light">
+
+<svg class="svg-sprite" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="m15.5 15.5 4.2 4.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 5 8 12l7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.7" fill="currentColor"/><circle cx="12" cy="12" r="1.7" fill="currentColor"/><circle cx="19" cy="12" r="1.7" fill="currentColor"/></symbol>
+  <symbol id="i-phone" viewBox="0 0 24 24"><path d="M6.6 3.9c.8-.5 1.8-.3 2.3.5l1.4 2.3c.4.7.3 1.6-.3 2.1l-.9.8c.7 1.6 2 2.9 3.6 3.6l.8-.9c.5-.6 1.4-.7 2.1-.3l2.3 1.4c.8.5 1 1.5.5 2.3l-1 1.6c-.6 1-1.8 1.4-2.9 1.1C9 17.5 6.4 14.9 5.4 9.3c-.3-1.1.1-2.3 1.1-2.9z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24"><path d="m15.5 3.5 5 5-2.2.7-3.6 3.6.3 3.2-2 2-3.2-3.2-4.6 4.6-.1.1V9.2l4.5-4.5 3.2.3 3.6-3.6z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></symbol>
+  <symbol id="i-muted" viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="m16 9 5 6M21 9l-5 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></symbol>
+  <symbol id="i-attach" viewBox="0 0 24 24"><path d="M20 11.5 12 19.5a5 5 0 0 1-7-7l8.5-8.5a3.4 3.4 0 0 1 4.8 4.8L10 17.1a1.8 1.8 0 0 1-2.6-2.6l7.7-7.7" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-emoji" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.4" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="9" cy="10" r="1" fill="currentColor"/><circle cx="15" cy="10" r="1" fill="currentColor"/><path d="M8.5 14c.9 1.4 2 2.1 3.5 2.1s2.6-.7 3.5-2.1" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24"><path d="M3.4 11.3 20 4l-5.2 16.4-3.3-6.5-6.1-2.6z" fill="currentColor"/><path d="m11.5 13.9 4.4-4.4" stroke="#fff" stroke-width="1.3" stroke-linecap="round"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2.2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M8.5 10V7.5a3.5 3.5 0 0 1 7 0V10" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="12" cy="15" r="1.3" fill="currentColor"/></symbol>
+  <symbol id="i-reload" viewBox="0 0 24 24"><path d="M19 12a7 7 0 1 1-2.1-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M19 4v5h-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-external" viewBox="0 0 24 24"><path d="M13 4h7v7M20 4l-9 9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M18 14v4.5A1.5 1.5 0 0 1 16.5 20h-11A1.5 1.5 0 0 1 4 18.5v-11A1.5 1.5 0 0 1 5.5 6H10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.2 4.2L19 6.9" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-checks" viewBox="0 0 24 24"><path d="m2.5 12.4 3.6 3.6 8-8.4" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/><path d="m10 15.6 1.2 1.2 8.6-9" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M3.6 19c.5-3 2.6-4.7 5.4-4.7s4.9 1.7 5.4 4.7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M15.4 5.6a3.2 3.2 0 0 1 0 6.3M17.5 14.7c2.1.4 3.6 1.9 4 4.3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.6" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12 10.6V17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="7.6" r="1.1" fill="currentColor"/></symbol>
+  <symbol id="i-reply" viewBox="0 0 24 24"><path d="M9 7 4 12l5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M4.5 12H14c3.3 0 5.5 1.8 5.5 5.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+  <symbol id="i-forward" viewBox="0 0 24 24"><path d="m15 7 5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M19.5 12H10c-3.3 0-5.5 1.8-5.5 5.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.2A8.2 8.2 0 0 1 9.8 4a8.4 8.4 0 1 0 10.2 10.2z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 2.8v2.4M12 18.8v2.4M21.2 12h-2.4M5.2 12H2.8M18.5 5.5l-1.7 1.7M7.2 16.8l-1.7 1.7M18.5 18.5l-1.7-1.7M7.2 7.2 5.5 5.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
+  <symbol id="i-flag" viewBox="0 0 24 24"><path d="M6 21V4h9l-.7 2.6c-.3 1.1.5 2.1 1.6 2.1H20l-2 5 2 5h-8.2c-1.2 0-2.2.7-2.6 1.8L8.5 21z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></symbol>
+  <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M19.1 14.5a1.6 1.6 0 0 0 .3 1.8l.1.1-2.1 2.1-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5v.2h-3v-.2a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1-2.1-2.1.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H5v-3h.2a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1 2.1-2.1.1.1a1.6 1.6 0 0 0 1.8.3 1.6 1.6 0 0 0 1-1.5V4h3v.2a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1 2.1 2.1-.1.1a1.6 1.6 0 0 0-.3 1.8 1.6 1.6 0 0 0 1.5 1h.2v3h-.2a1.6 1.6 0 0 0-1.5 1z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></symbol>
+  <symbol id="i-bot" viewBox="0 0 24 24"><rect x="4.5" y="7.5" width="15" height="11" rx="4" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12 3.5v4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="12" cy="3.2" r="1.1" fill="currentColor"/><circle cx="9.2" cy="12.4" r="1.15" fill="currentColor"/><circle cx="14.8" cy="12.4" r="1.15" fill="currentColor"/><path d="M9.8 15.6h4.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></symbol>
+  <symbol id="i-paperboat" viewBox="0 0 32 32"><path d="M3 17.5 16 5l13 12.5-4.5 9.5h-17z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M16 5v17M3 17.5h26" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></symbol>
+</svg>
+
+<div id="app" class="app">
+  <div class="tg-shell" id="tgShell">
+    <aside class="sidebar" id="sidebar">
+      <div class="side-top">
+        <button class="icon-btn only-desktop" id="menuBtn" title="菜单"><svg><use href="#i-menu"/></svg></button>
+        <label class="search-box"><svg><use href="#i-search"/></svg><input id="searchInput" type="search" placeholder="搜索" autocomplete="off" spellcheck="false"></label>
+      </div>
+      <nav class="folders" id="folders"></nav>
+      <div class="chat-list" id="chatList"></div>
+      <div class="side-footer" id="sideFooter"></div>
+    </aside>
+
+    <main class="chat" id="chatPane">
+      <header class="chat-head" id="chatHead"></header>
+      <div class="pinned-bar hidden" id="pinnedBar"></div>
+      <div class="messages" id="messages"></div>
+      <div class="composer-wrap" id="composerWrap"></div>
+    </main>
+
+    <aside class="info-panel" id="infoPanel"></aside>
+  </div>
+
+  <button class="classroom-fab" id="classroomFab" title="课堂面板（T）" aria-label="课堂面板">
+    <svg><use href="#i-paperboat"/></svg>
+  </button>
+  <div class="sim-badge" id="simBadge">纸舟课堂 · 仿真演练</div>
+</div>
+
+<div class="browser-overlay" id="browser" aria-hidden="true">
+  <div class="browser-chrome">
+    <button class="icon-btn" id="browserClose" title="关闭"><svg><use href="#i-close"/></svg></button>
+    <div class="urlbar" id="urlbar">
+      <button class="url-lock" id="urlLock" title="连接信息"><svg><use href="#i-lock"/></svg></button>
+      <span class="url-host" id="urlHost">okpay-app.xyz</span>
+      <span class="url-path" id="urlPath">/wallet/bind</span>
+      <button class="url-reload" id="urlReload" title="刷新"><svg><use href="#i-reload"/></svg></button>
+    </div>
+    <button class="icon-btn" id="browserMenu" title="更多"><svg><use href="#i-more"/></svg></button>
+  </div>
+  <div class="browser-progress" id="browserProgress"></div>
+  <div class="browser-body" id="browserBody"></div>
+</div>
+
+<div class="wallet-overlay" id="walletSheet" aria-hidden="true">
+  <div class="wallet-card" id="walletCard"></div>
+</div>
+
+<div class="modal-root" id="modalRoot"></div>
+<div class="toast-root" id="toastRoot"></div>
+
+<div class="splash" id="splash">
+  <div class="splash-card">
+    <div class="splash-logo"><svg><use href="#i-paperboat"/></svg></div>
+    <div class="splash-kicker">纸舟课堂 · 课堂案例</div>
+    <h1>Telegram 社群骗局仿真</h1>
+    <p class="splash-sub">按 2026 年 8 月真实案例复原：云上商铺群 · 商城机器人 · Okpay 红包提现 · 钱包授权。</p>
+    <ul class="splash-points">
+      <li><b>完全本地</b>没有真实 Telegram 账号、群组或钱包</li>
+      <li><b>可点可退</b>每一步都是真实按钮流程，走错可以重来</li>
+      <li><b>课后复盘</b>记录了 8 个检查点的操作与证据</li>
+    </ul>
+    <div class="splash-actions">
+      <button class="btn primary" id="startBlind">学生视角开始</button>
+      <button class="btn ghost" id="startTeach">教师视角（带讲解）</button>
+      <a class="btn ghost" href="index.html#split">左右对照</a>
+    </div>
+    <button class="splash-resume hidden" id="resumeSession">继续上次演练</button>
+    <p class="splash-foot">仿真域名、地址与余额均为课堂虚构；证据图来自频道公开材料，已脱敏。</p>
+  </div>
+</div>
+
+<div class="teacher-overlay" id="teacherPanel" aria-hidden="true"></div>
+<div class="review-overlay" id="review" aria-hidden="true"></div>
+
+<script src="js/data.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/webpages.js"></script>
+<script src="js/flows.js"></script>
+<script src="js/classroom.js"></script>
+<script src="js/split.js"></script>
+<script src="js/boot.js"></script>
+</body>
+</html>

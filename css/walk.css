@@ -1,0 +1,128 @@
+/* 逐页讲解 */
+:root {
+  --paper:#f3efe4; --card:#fffdf8; --ink:#17202a; --ink2:#3d4640; --muted:#7d8379;
+  --line:#ddd5c2; --amber:#a56a12; --red:#a4241d; --green:#1e6b3a; --blue:#2f5d8a;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin:0; background:var(--paper); color:var(--ink);
+  font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",-apple-system,BlinkMacSystemFont,sans-serif;
+  font-size:15px; line-height:1.75; -webkit-font-smoothing:antialiased;
+}
+a { color:var(--blue); text-decoration:none; border-bottom:1px solid rgba(47,93,138,.25); }
+.walk-bar {
+  position:sticky; top:0; z-index:20; display:flex; align-items:center; gap:12px;
+  padding:10px 22px; background:rgba(243,239,228,.96); backdrop-filter:blur(8px);
+  border-bottom:1px solid var(--line);
+}
+.walk-brand { display:flex; align-items:center; gap:9px; font-weight:700; font-size:13px; }
+.walk-brand .boat { width:30px; height:30px; border-radius:9px; background:#1b2733; color:#9ed3ff; display:flex; align-items:center; justify-content:center; }
+.walk-brand .boat svg { width:18px; height:18px; }
+.walk-bar .spacer { flex:1; }
+.walk-bar .btn { font-size:12.5px; padding:7px 12px; border-radius:8px; border:1px solid var(--line); background:transparent; color:var(--ink); cursor:pointer; white-space:nowrap; }
+.walk-bar .btn.primary { background:#1b2733; color:#f3efe4; border-color:#1b2733; }
+.walk-layout { max-width:1240px; margin:0 auto; display:grid; grid-template-columns:236px 1fr; gap:28px; padding:34px 22px 80px; }
+.walk-nav { position:sticky; top:64px; align-self:start; max-height:calc(100vh - 80px); overflow-y:auto; padding-right:6px; }
+.walk-nav h2 { font-size:11px; letter-spacing:.16em; text-transform:uppercase; color:#8a7f66; margin:0 0 10px; }
+.walk-nav a { display:block; font-size:12.5px; color:#4d564f; padding:5px 8px; border:0; border-radius:6px; border-left:2px solid transparent; line-height:1.45; }
+.walk-nav a:hover { background:#eae3d3; color:#17202a; }
+.walk-nav .grp { font-size:10.5px; color:#9a8f78; letter-spacing:.08em; margin:12px 0 4px; padding-left:8px; }
+.walk-main { min-width:0; }
+.walk-hero { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:28px 30px; margin-bottom:18px; }
+.walk-kicker { font-size:11.5px; letter-spacing:.2em; text-transform:uppercase; color:#8a7f66; font-weight:700; }
+.walk-hero h1 { font-size:34px; line-height:1.18; letter-spacing:-.02em; margin:8px 0 10px; }
+.walk-hero .lead { font-size:16px; color:#5c645f; margin:0 0 16px; max-width:760px; }
+.walk-legend { display:flex; flex-wrap:wrap; gap:8px; }
+.walk-badge { display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:700; padding:3px 8px; border-radius:5px; letter-spacing:.03em; }
+.walk-badge.real { background:#e6f1e7; color:#1e6b3a; }
+.walk-badge.recon { background:#e7eef7; color:#2f5d8a; }
+.walk-badge.gap { background:#f6e6e3; color:#a4241d; }
+.walk-map { width:100%; border-collapse:collapse; background:var(--card); border:1px solid var(--line); border-radius:12px; overflow:hidden; font-size:12.5px; margin:14px 0 0; }
+.walk-map th, .walk-map td { padding:8px 10px; border-bottom:1px solid #eee8da; text-align:left; vertical-align:top; }
+.walk-map th { background:#f7f2e6; font-size:10.5px; letter-spacing:.06em; color:#7a6f58; text-transform:uppercase; }
+.walk-map tr:last-child td { border-bottom:0; }
+.walk-sec { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:22px 24px; margin:0 0 16px; scroll-margin-top:70px; }
+.walk-head { display:flex; align-items:center; gap:10px; border-bottom:1px solid var(--line); padding-bottom:10px; margin-bottom:16px; }
+.walk-num { width:28px; height:28px; border-radius:8px; background:#1b2733; color:#f3efe4; font-size:12px; font-weight:700; display:flex; align-items:center; justify-content:center; flex:0 0 auto; }
+.walk-head h2 { font-size:20px; margin:0; flex:1 1 auto; letter-spacing:-.01em; }
+.walk-body { display:grid; grid-template-columns:280px 1fr; gap:22px; align-items:start; }
+.walk-img { border-radius:16px; overflow:hidden; border:1px solid #d9d2c2; background:#0e1116; }
+.walk-img img { display:block; width:100%; height:auto; }
+.walk-img figcaption { font-size:10.5px; color:#7d8379; padding:5px 8px; background:#f7f2e6; border-top:1px solid #e6dfcf; line-height:1.5; }
+.walk-text { min-width:0; }
+.walk-text h3 { font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:#9a8f78; margin:14px 0 4px; }
+.walk-text h3:first-child { margin-top:0; }
+.walk-quote { background:#fbf6ea; border-left:3px solid #c9a86a; padding:8px 11px; border-radius:0 7px 7px 0; font-size:13px; line-height:1.7; color:#3d4640; margin:2px 0 8px; white-space:pre-wrap; }
+.walk-pair { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:4px 0 8px; }
+.walk-cell { border-radius:8px; padding:8px 10px; font-size:12.5px; line-height:1.65; }
+.walk-cell.you { background:#f2f7f2; color:#2f4a36; }
+.walk-cell.real { background:#fbefec; color:#6d2a22; }
+.walk-cell b { display:block; font-size:10px; letter-spacing:.1em; text-transform:uppercase; margin-bottom:2px; opacity:.75; }
+.walk-why { margin:4px 0 0; padding-left:18px; font-size:13px; color:var(--ink2); line-height:1.7; }
+.walk-why li { margin-bottom:2px; }
+.walk-meta { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px; font-size:12px; color:#5c645f; }
+.walk-meta div { background:#f6f2e7; border-radius:7px; padding:7px 9px; }
+.walk-meta b { display:block; font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:#9a8f78; margin-bottom:1px; }
+.walk-one { margin-top:12px; background:#1b2733; color:#f0eadb; border-radius:9px; padding:10px 13px; font-size:13.5px; line-height:1.6; }
+.walk-one b { color:#f0c987; }
+.walk-gap { background:#fff5f2; border:1px dashed #d9a79f; border-radius:12px; padding:16px; color:#7a2b22; font-size:13px; line-height:1.7; }
+.walk-gap .big { font-size:16px; font-weight:700; margin-bottom:4px; }
+.walk-foot { margin-top:40px; border-top:1px solid var(--line); padding-top:16px; font-size:12px; color:#7d8379; line-height:1.8; }
+.walk-foot b { color:#3d4640; }
+.walk-tagline { margin:20px 0 0; padding:16px 20px; background:#1b2733; color:#f0eadb; border-radius:12px; font-size:15px; line-height:1.7; }
+.walk-tagline b { color:#f0c987; }
+@media (max-width: 980px) {
+  .walk-layout { grid-template-columns:1fr; padding:20px 14px 60px; }
+  .walk-nav { position:static; max-height:none; display:none; }
+  .walk-body { grid-template-columns:1fr; }
+  .walk-img { max-width:320px; }
+  .walk-hero h1 { font-size:28px; }
+  .walk-pair, .walk-meta { grid-template-columns:1fr; }
+}
+@media print {
+  @page { size:A4; margin:12mm; }
+  body { background:#fff; font-size:10pt; }
+  .walk-bar, .walk-nav { display:none; }
+  .walk-layout { display:block; max-width:none; padding:0; }
+  .walk-hero { break-inside:avoid; }
+  .walk-sec { break-inside:avoid; page-break-inside:avoid; border:1px solid #ccc; margin-bottom:8px; }
+  .walk-img { max-width:68mm; }
+  .walk-img img { width:68mm; }
+  .walk-map { font-size:9pt; }
+  a { color:#000; border:0; }
+}
+
+@media (max-width: 980px) {
+  .walk-hero { padding: 22px 18px; }
+  .walk-sec { padding: 18px 16px; }
+  .walk-map { table-layout: fixed; }
+  .walk-map th, .walk-map td { overflow-wrap: anywhere; word-break: break-word; padding: 6px 7px; font-size: 11.5px; }
+  .walk-quote { font-size: 12.5px; }
+  .walk-head h2 { font-size: 18px; }
+}
+
+@media (max-width: 760px) {
+  .walk-bar { flex-wrap: wrap; row-gap: 6px; padding: 8px 10px; }
+  .walk-bar .walk-brand { display: none; }
+  .walk-bar .btn { padding: 6px 8px; font-size: 11.5px; }
+  .walk-bar .spacer { flex: 1 1 0; }
+}
+
+@media print {
+  .walk-sec { padding: 8px 10px; margin-bottom: 6px; }
+  .walk-body { grid-template-columns: 46mm 1fr; gap: 10px; }
+  .walk-img, .walk-img img { width: 46mm; max-width: 46mm; }
+  .walk-img figcaption { font-size: 7.5pt; padding: 3px 4px; }
+  .walk-head { padding-bottom: 4px; margin-bottom: 8px; }
+  .walk-head h2 { font-size: 14pt; }
+  .walk-num { width: 20px; height: 20px; font-size: 8pt; }
+  .walk-text h3 { font-size: 7.5pt; margin: 7px 0 2px; }
+  .walk-quote { font-size: 8pt; padding: 5px 7px; line-height: 1.55; }
+  .walk-cell { font-size: 7.8pt; padding: 5px 6px; }
+  .walk-why { font-size: 7.8pt; line-height: 1.55; }
+  .walk-meta { font-size: 7.5pt; gap: 6px; margin-top: 6px; }
+  .walk-meta div { padding: 4px 6px; }
+  .walk-one { font-size: 8.2pt; padding: 6px 8px; margin-top: 7px; }
+  .walk-sec { break-inside: avoid; }
+}
